@@ -2072,24 +2072,25 @@ class Coder:
             return
 
         if not Path(full_path).exists():
-            if not self.io.confirm_ask("Create new file?", subject=path):
-                self.io.tool_output(f"Skipping edits to {path}")
-                return
+            # Automatically allow creation without asking
+            self.io.tool_output(f"Creating new file {path}") # Inform the user
 
             if not self.dry_run:
                 if not utils.touch_file(full_path):
                     self.io.tool_error(f"Unable to create {path}, skipping edits.")
-                    return
+                    return # Keep this return (if touch fails)
 
-                # Seems unlikely that we needed to create the file, but it was
-                # actually already part of the repo.
-                # But let's only add if we need to, just to be safe.
-                if need_to_add:
-                    self.repo.repo.git.add(full_path)
+                # Add to git if needed
+                if need_to_add and self.repo:
+                    try: # Add try-except for git errors
+                        self.repo.repo.git.add(full_path)
+                    except ANY_GIT_ERROR as e:
+                        self.io.tool_warning(f"Could not git add new file {path}: {e}")
+
 
             self.abs_fnames.add(full_path)
             self.check_added_files()
-            return True
+            return True # Keep this return (if creation succeeds)
 
         if not self.io.confirm_ask(
             "Allow edits to file that has not been added to the chat?",
