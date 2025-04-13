@@ -288,6 +288,22 @@ def get_parser(default_config_files, git_root):
         default=None,
         help="Log the conversation with the LLM to this file (for example, .aider.llm.history)",
     )
+    default_chat_files_history_file = (
+        os.path.join(git_root, ".aider.chat.files.json") if git_root else ".aider.chat.files.json"
+    )
+    group.add_argument(
+        "--chat-files-history-file",
+        metavar="CHAT_FILES_HISTORY_FILE",
+        default=default_chat_files_history_file,
+        help=f"Specify the chat files history file (default: {default_chat_files_history_file})",
+    )
+    group.add_argument(
+        "--restore-chat-files",
+        action=argparse.BooleanOptionalAction,
+        default=True, # Let's default to True like chat history
+        help="Restore the previous chat files list (default: True)",
+    )
+
 
     ##########
     group = parser.add_argument_group("Output settings")

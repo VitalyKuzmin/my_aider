@@ -33,11 +33,15 @@ from aider.models import ModelSettings
 from aider.onboarding import offer_openrouter_oauth, select_default_model
 from aider.repo import ANY_GIT_ERROR, GitRepo
 from aider.report import report_uncaught_exceptions
+import atexit
 from aider.versioncheck import check_version, install_from_main_branch, install_upgrade
 from aider.watch import FileWatcher
 
 from .dump import dump  # noqa: F401
 
+
+# Global variable to hold the coder instance for saving files on exit
+_coder_instance_for_exit = None
 
 def check_config_files_for_yes(config_files):
     found = False
@@ -331,6 +335,35 @@ def generate_search_path_list(default_file, git_root, command_line_file):
     return files
 
 
+def save_chat_files_history(coder, chat_files_history_file):
+    """Saves the list of files currently in the chat."""
+    if not coder or not chat_files_history_file:
+        return
+
+    try:
+        # Get relative paths for saving
+        fnames_relative = [coder.get_rel_fname(f) for f in coder.abs_fnames]
+        read_only_fnames_relative = [coder.get_rel_fname(f) for f in coder.abs_read_only_fnames]
+
+        data_to_save = {
+            "fnames": sorted(list(set(fnames_relative))),
+            "read_only_fnames": sorted(list(set(read_only_fnames_relative))),
+        }
+
+        # Ensure the directory exists
+        file_path = Path(chat_files_history_file)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(file_path, "w", encoding=coder.io.encoding) as f:
+            json.dump(data_to_save, f, indent=4)
+        if coder.verbose:
+             coder.io.tool_output(f"Saved chat files list to {chat_files_history_file}")
+
+    except Exception as e:
+        if coder.verbose:
+            coder.io.tool_error(f"Error saving chat files history to {chat_files_history_file}: {e}")
+
+
 def register_models(git_root, model_settings_fname, io, verbose=False):
     model_settings_files = generate_search_path_list(
         ".aider.model.settings.yml", git_root, model_settings_fname
@@ -448,6 +481,7 @@ def sanity_check_repo(repo, io):
 
 
 def main(argv=None, input=None, output=None, force_git_root=None, return_coder=False):
+    global _coder_instance_for_exit
     report_uncaught_exceptions()
 
     if argv is None:
@@ -665,10 +699,52 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
             io.tool_output(f"Loaded {fname}")
 
     all_files = args.files + (args.file or [])
-    fnames = [str(Path(fn).resolve()) for fn in all_files]
-    read_only_fnames = []
+    # Initialize lists for files
+    fnames_from_cmd = [str(Path(fn).resolve()) for fn in all_files]
+    read_only_fnames_from_cmd = []
     for fn in args.read or []:
         path = Path(fn).expanduser().resolve()
+        if path.is_dir():
+            read_only_fnames_from_cmd.extend(str(f) for f in path.rglob("*") if f.is_file())
+        else:
+            read_only_fnames_from_cmd.append(str(path))
+
+    # Restore files from history if requested
+    fnames_restored = []
+    read_only_fnames_restored = []
+    if args.restore_chat_files:
+        try:
+            chat_files_history_path = Path(args.chat_files_history_file)
+            if chat_files_history_path.exists():
+                with open(chat_files_history_path, "r", encoding=args.encoding) as f:
+                    saved_files_data = json.load(f)
+                    fnames_restored_rel = saved_files_data.get("fnames", [])
+                    read_only_fnames_restored_rel = saved_files_data.get("read_only_fnames", [])
+
+                    # Convert relative paths back to absolute based on current root
+                    # Need git_root or calculated root here. Let's use git_root for now.
+                    # A better approach might be needed if git_root isn't available/correct.
+                    current_root = git_root or os.getcwd() # Fallback to cwd if no git_root
+                    fnames_restored = [str(Path(current_root) / f) for f in fnames_restored_rel]
+                    read_only_fnames_restored = [str(Path(current_root) / f) for f in read_only_fnames_restored_rel]
+
+                    if args.verbose and (fnames_restored or read_only_fnames_restored):
+                         io.tool_output(f"Restored files list from {args.chat_files_history_file}")
+
+        except FileNotFoundError:
+             if args.verbose:
+                 io.tool_output(f"Chat files history file not found: {args.chat_files_history_file}")
+        except (json.JSONDecodeError, Exception) as e:
+             io.tool_error(f"Error reading chat files history file {args.chat_files_history_file}: {e}")
+
+    # Combine files from command line and restored history
+    # Using sets to avoid duplicates before passing to Coder
+    fnames = list(set(fnames_from_cmd + fnames_restored))
+    read_only_fnames = list(set(read_only_fnames_from_cmd + read_only_fnames_restored))
+
+    # Check for directory arguments after combining lists
+    if len(all_files) > 1: # Check original command line args for dir error
+        good = True
         if path.is_dir():
             read_only_fnames.extend(str(f) for f in path.rglob("*") if f.is_file())
         else:
@@ -694,9 +770,12 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
                 git_dname = str(Path(all_files[0]).resolve())
                 fnames = []
             else:
-                io.tool_error(f"{all_files[0]} is a directory, but --no-git selected.")
-                analytics.event("exit", reason="Directory with --no-git")
-                return 1
+                 # Check if the single argument was a directory
+                 if Path(all_files[0]).is_dir():
+                     io.tool_error(f"{all_files[0]} is a directory, but --no-git selected.")
+                     analytics.event("exit", reason="Directory with --no-git")
+                     return 1
+                 # If it wasn't a directory, fnames is already populated correctly
 
     # We can't know the git repo for sure until after parsing the args.
     # If we guessed wrong, reparse because that changes things like
@@ -990,6 +1069,9 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
             auto_accept_architect=args.auto_accept_architect,
             args=args, # Pass the command line args object
         )
+        _coder_instance_for_exit = coder # Store for saving on exit
+        # Register the save function to be called on exit
+        atexit.register(save_chat_files_history, coder, args.chat_files_history_file)
     except UnknownEditFormat as err:
         io.tool_error(str(err))
         io.offer_url(urls.edit_formats, "Open documentation about edit formats?")
