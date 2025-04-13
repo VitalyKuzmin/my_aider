@@ -501,7 +501,7 @@ class Commands:
         chat_tokens = 0
         if msgs:
             chat_tokens = self.coder.main_model.token_count(msgs)
-            res.append((chat_tokens, "chat history", "use /clear to clear"))
+            # Don't add chat history to the main list yet, handle it separately below
 
         # repo map
         other_files = set(self.coder.get_all_abs_files()) - set(self.coder.abs_fnames)
@@ -536,8 +536,9 @@ class Commands:
                 tokens = self.coder.main_model.token_count(content)
                 file_res.append((tokens, f"{relative_fname} (read-only)", "/drop to remove"))
 
-        file_res.sort()
-        res.extend(file_res)
+        # Don't sort or extend the main list with files here, handle files separately below
+        # file_res.sort()
+        # res.extend(file_res)
 
         self.io.tool_output(
             f"Approximate context window usage for {self.coder.main_model.name}, in tokens:"
@@ -555,12 +556,35 @@ class Commands:
         cost_pad = " " * cost_width
         total = 0
         total_cost = 0.0
-        for tk, msg, tip in res:
+
+        # Print system messages and repo map first
+        system_and_map_res = [row for row in res if row[1] not in ["chat history"]]
+        for tk, msg, tip in system_and_map_res:
             total += tk
             cost = tk * (self.coder.main_model.info.get("input_cost_per_token") or 0)
             total_cost += cost
             msg = msg.ljust(col_width)
             self.io.tool_output(f"${cost:7.4f} {fmt(tk)} {msg} {tip}")  # noqa: E231
+
+        # Print chat history tokens separately if they exist
+        if chat_tokens > 0:
+            chat_cost = chat_tokens * (self.coder.main_model.info.get("input_cost_per_token") or 0)
+            total += chat_tokens
+            total_cost += chat_cost
+            chat_msg = "chat history".ljust(col_width)
+            chat_tip = "use /clear to clear"
+            self.io.tool_output(f"${chat_cost:7.4f} {fmt(chat_tokens)} {chat_msg} {chat_tip}") # noqa: E231
+
+
+        # Print file tokens
+        file_res.sort() # Ensure files are sorted before printing
+        for tk, msg, tip in file_res:
+             total += tk
+             cost = tk * (self.coder.main_model.info.get("input_cost_per_token") or 0)
+             total_cost += cost
+             msg = msg.ljust(col_width)
+             self.io.tool_output(f"${cost:7.4f} {fmt(tk)} {msg} {tip}") # noqa: E231
+
 
         self.io.tool_output("=" * (width + cost_width + 1))
         self.io.tool_output(f"${total_cost:7.4f} {fmt(total)} tokens total")  # noqa: E231
