@@ -50,11 +50,9 @@ class Browser:
             import logging
             logging.getLogger('WDM').setLevel(logging.ERROR)
 
-            self.io.tool_output("Setting up WebDriver...")
             # Use webdriver-manager to automatically download and manage the ChromeDriver
             service = ChromeService(ChromeDriverManager().install())
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
-            self.io.tool_output("WebDriver setup complete.")
 
         except WebDriverException as e:
             self.io.tool_error(f"WebDriver setup failed: {e}")
@@ -81,10 +79,8 @@ class Browser:
             return None, None
 
         try:
-            self.io.tool_output(f"Navigating to {url}...")
             self.driver.get(url)
             time.sleep(2)  # Wait for the page to load (consider more robust waits later)
-            self.io.tool_output("Navigation complete.")
             return self.analyze_page()
         except WebDriverException as e:
             self.io.tool_error(f"Failed to navigate to {url}: {e}")
@@ -140,12 +136,10 @@ class Browser:
             )
             try:
                 search_url = f"https://www.google.com/search?q={query}"
-                self.io.tool_output(f"Performing Google search via Selenium for: '{query}'...")
                 self.driver.get(search_url)
                 time.sleep(2) # Wait for search results
 
                 # Analyze the search results page itself.
-                self.io.tool_output("Selenium search complete.")
                 return self.analyze_page()
 
             except WebDriverException as e:
@@ -187,11 +181,9 @@ class Browser:
         }
 
         try:
-            self.io.tool_output(f"Performing Google API search for: '{query}'...")
             response = requests.get(url, params=params)
             response.raise_for_status()  # Raise an exception for bad status codes
             search_results = response.json()
-            self.io.tool_output("Google API search complete.")
 
             formatted_results = f"Search results for '{query}':\n\n"
             links_list = []
@@ -241,7 +233,6 @@ class Browser:
             return None, None
 
         try:
-            self.io.tool_output("Analyzing page content...")
             # Get page source and convert to markdown
             page_source = self.driver.page_source
             text_content = self.html_converter.handle(page_source)
@@ -289,7 +280,6 @@ class Browser:
                 self.io.tool_warning(f"Could not completely analyze interactive elements: {e}")
 
 
-            self.io.tool_output("Page analysis complete.")
             # TODO: Integrate with AI for summarization/analysis later
             # For now, just return the extracted text and elements
             return summary_content, interactive_elements_data
@@ -307,10 +297,8 @@ class Browser:
         """
         if self.driver:
             try:
-                self.io.tool_output("Quitting browser...")
                 self.driver.quit()
                 self.driver = None
-                self.io.tool_output("Browser quit.")
             except WebDriverException as e:
                 self.io.tool_error(f"Error quitting browser: {e}")
             except Exception as e:

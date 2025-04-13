@@ -746,7 +746,7 @@ class Model(ModelSettings):
     def is_ollama(self):
         return self.name.startswith("ollama/") or self.name.startswith("ollama_chat/")
 
-    def send_completion(self, messages, functions, stream, temperature=None):
+    def send_completion(self, messages, stream, functions=None, temperature=None, tools=None, tool_choice=None):
         if os.environ.get("AIDER_SANITY_CHECK_TURNS"):
             sanity_check_messages(messages)
 
@@ -767,10 +767,16 @@ class Model(ModelSettings):
 
             kwargs["temperature"] = temperature
 
-        if functions is not None:
+        # Handle both older 'functions' and newer 'tools'
+        if tools:
+            kwargs["tools"] = tools
+            if tool_choice:
+                kwargs["tool_choice"] = tool_choice
+        elif functions is not None: # Fallback for older function calling
             function = functions[0]
             kwargs["tools"] = [dict(type="function", function=function)]
             kwargs["tool_choice"] = {"type": "function", "function": {"name": function["name"]}}
+
         if self.extra_params:
             kwargs.update(self.extra_params)
         if self.is_ollama() and "num_ctx" not in kwargs:
@@ -805,7 +811,7 @@ class Model(ModelSettings):
                     "functions": None,
                     "stream": False,
                 }
-
+                # kwargs already contains functions=None
                 _hash, response = self.send_completion(**kwargs)
                 if not response or not hasattr(response, "choices") or not response.choices:
                     return None

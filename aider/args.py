@@ -279,8 +279,8 @@ def get_parser(default_config_files, git_root):
     group.add_argument(
         "--restore-chat-history",
         action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Restore the previous chat history messages (default: False)",
+        default=True,  # Changed default to True
+        help="Restore the previous chat history messages (default: True)",
     )
     group.add_argument(
         "--llm-history-file",

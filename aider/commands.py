@@ -23,8 +23,6 @@ from aider.repo import ANY_GIT_ERROR
 from aider.run_cmd import run_cmd
 from aider.scrape import Scraper, install_playwright
 from aider.utils import is_image_file
-from aider.browser import Browser
-
 from .dump import dump  # noqa: F401
 
 
@@ -37,7 +35,7 @@ class SwitchCoder(Exception):
 class Commands:
     voice = None
     scraper = None
-    browser = None
+    # browser instance is now managed by the Coder
 
     def clone(self):
         return Commands(
@@ -84,8 +82,6 @@ class Commands:
 
         # Store the original read-only filenames provided via args.read
         self.original_read_only_fnames = set(original_read_only_fnames or [])
-
-        # Browser will be initialized lazily on first use
 
     def cmd_model(self, args):
         "Switch the Main Model to a new LLM"
@@ -1609,21 +1605,19 @@ Just show me the edits I need to make.
     def cmd_browse(self, args):
         "Open a URL in the browser, summarize it, and list interactive elements"
 
-        # Lazy initialization of the browser
-        if not self.browser:
-            if not self.coder: # Should not happen normally, but safety check
-                 self.io.tool_error("Coder not available, cannot initialize browser.")
-                 return
-            try:
-                self.browser = Browser(coder=self.coder, args=self.args)
-                if not self.browser.driver: # Check if setup failed during init
-                    self.io.tool_error("Browser initialization failed.")
-                    self.browser = None # Reset if failed
-                    return
-            except Exception as e:
-                 self.io.tool_error(f"Failed to initialize browser: {e}")
-                 self.browser = None
-                 return
+        # Browser is now managed by the Coder, access via self.coder.browser
+        # Lazy initialization happens within the Coder or its browser access method
+
+        if not self.coder: # Should not happen normally, but safety check
+             self.io.tool_error("Coder not available, cannot access browser.")
+             return
+
+        # Access the browser instance via the coder
+        # The coder's method/property should handle lazy initialization
+        browser_instance = self.coder._get_browser()
+        if not browser_instance:
+             # Error message should be handled by _get_browser()
+             return
 
         url_or_search = args.strip()
         if not url_or_search:
@@ -1633,13 +1627,13 @@ Just show me the edits I need to make.
         try:
             # Check if it's a URL or a search query
             if url_or_search.startswith("http://") or url_or_search.startswith("https://"):
-                content, interactive_elements = self.browser.go_to_url(url_or_search)
+                content, interactive_elements = browser_instance.go_to_url(url_or_search)
             else:
                 # Assume it's a search query
-                content, interactive_elements = self.browser.search_google(url_or_search)
+                content, interactive_elements = browser_instance.search_google(url_or_search)
 
             if content is None:
-                # Error already printed by browser methods
+                # Error should be printed by browser methods
                 return
 
             # Format the message for the LLM
@@ -1665,8 +1659,10 @@ Just show me the edits I need to make.
 
     def cmd_browse_quit(self, args):
         "Quit the browser"
-        if self.browser:
-            self.browser.quit()
+        if self.coder and self.coder.browser:
+            self.coder.browser.quit()
+            # Also set the coder's browser attribute to None after quitting
+            self.coder.browser = None
             self.io.tool_output("Browser has been quit.")
         else:
             self.io.tool_error("Browser is not running.")

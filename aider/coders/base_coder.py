@@ -37,6 +37,7 @@ from aider.reasoning_tags import (
 from aider.repo import ANY_GIT_ERROR, GitRepo
 from aider.repomap import RepoMap
 from aider.run_cmd import run_cmd
+from aider.browser import Browser # Import the Browser class
 from aider.utils import format_content, format_messages, format_tokens, is_image_file
 
 from ..dump import dump  # noqa: F401
@@ -111,6 +112,7 @@ class Coder:
     ignore_mentions = None
     chat_language = None
     file_watcher = None
+    browser = None # Add browser attribute to Coder
 
     @classmethod
     def create(
@@ -169,6 +171,7 @@ class Coder:
                 total_cost=from_coder.total_cost,
                 ignore_mentions=from_coder.ignore_mentions,
                 file_watcher=from_coder.file_watcher,
+                args=from_coder.args, # Pass args from the original coder
             )
             use_kwargs.update(update)  # override to complete the switch
             use_kwargs.update(kwargs)  # override passed kwargs
@@ -323,9 +326,11 @@ class Coder:
         file_watcher=None,
         auto_copy_context=False,
         auto_accept_architect=True,
+        args=None, # Need args for browser initialization
     ):
         # Fill in a dummy Analytics if needed, but it is never .enable()'d
         self.analytics = analytics if analytics is not None else Analytics()
+        self.args = args # Store args for browser
 
         self.event = self.analytics.event
         self.chat_language = chat_language
@@ -518,6 +523,56 @@ class Coder:
             if self.verbose:
                 self.io.tool_output("JSON Schema:")
                 self.io.tool_output(json.dumps(self.functions, indent=4))
+
+    # Tool definition for web search
+    web_search_tool = {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": (
+                "Search the web for information. Use this when you need current information,"
+                " specific facts, or details not found in the provided code context."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query to use.",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    }
+
+
+    def _get_browser(self):
+        """Lazy initializer for the browser."""
+        if self.browser:
+            return self.browser
+
+        if self.args is None:
+            # Add a check to see if self.args is None before proceeding
+            self.io.tool_error("Internal Error: Coder.args is None when initializing browser.")
+            # Log potentially useful info if available
+            # self.io.tool_error(f"Coder instance type: {type(self)}")
+            # self.io.tool_error(f"Coder original_kwargs: {getattr(self, 'original_kwargs', 'Not Set')}")
+            return None
+
+        try:
+            # self.args is confirmed not None here
+            self.browser = Browser(coder=self, args=self.args)
+            if not self.browser.driver: # Check if setup failed during init
+                self.io.tool_error("Browser initialization failed.")
+                self.browser = None # Reset if failed
+                return None
+            return self.browser
+        except Exception as e:
+             self.io.tool_error(f"Failed to initialize browser: {e}")
+             self.browser = None
+             return None
+
 
     def setup_lint_cmds(self, lint_cmds):
         if not lint_cmds:
@@ -1591,16 +1646,23 @@ class Coder:
         self.ok_to_warm_cache = False
 
     def add_assistant_reply_to_cur_messages(self):
+        assistant_message = {"role": "assistant", "content": None}
         if self.partial_response_content:
-            self.cur_messages += [dict(role="assistant", content=self.partial_response_content)]
-        if self.partial_response_function_call:
-            self.cur_messages += [
-                dict(
-                    role="assistant",
-                    content=None,
-                    function_call=self.partial_response_function_call,
-                )
-            ]
+            assistant_message["content"] = self.partial_response_content
+
+        # Handle modern tool_calls
+        if self.partial_tool_calls:
+            assistant_message["tool_calls"] = self.partial_tool_calls
+            # Clear partial tool calls after adding to history
+            self.partial_tool_calls = []
+
+        # Handle older function_call (if tool_calls weren't present)
+        elif self.partial_response_function_call:
+            assistant_message["function_call"] = self.partial_response_function_call
+
+        # Add the message only if it has content or tool/function calls
+        if assistant_message.get("content") or assistant_message.get("tool_calls") or assistant_message.get("function_call"):
+            self.cur_messages += [assistant_message]
 
     def get_file_mentions(self, content, ignore_current=False):
         words = set(word for word in content.split())
@@ -1680,25 +1742,85 @@ class Coder:
 
         self.partial_response_content = ""
         self.partial_response_function_call = dict()
+        self.partial_tool_calls = [] # Initialize partial tool calls
 
         self.io.log_llm_history("TO LLM", format_messages(messages))
 
         completion = None
         try:
+            # Use the new 'tools' parameter and 'tool_choice'
             hash_object, completion = model.send_completion(
                 messages,
-                functions,
-                self.stream,
-                self.temperature,
+                tools=[self.web_search_tool], # Pass the tool schema
+                tool_choice="auto", # Let the model decide when to use the tool
+                stream=self.stream,
+                temperature=self.temperature,
             )
             self.chat_completion_call_hashes.append(hash_object.hexdigest())
 
             if self.stream:
+                # Stream handling needs to accommodate potential tool calls
                 yield from self.show_send_output_stream(completion)
-            else:
-                self.show_send_output(completion)
+                # After stream, check if tool calls were made
+                if self.partial_tool_calls:
+                     # === Tool Execution Loop (Streaming) ===
+                     if self.partial_tool_calls:
+                         tool_results = self.execute_tool_calls(self.partial_tool_calls)
+                         # Append the assistant message with tool_calls and the tool results
+                         self.add_assistant_reply_to_cur_messages() # Add the assistant's tool_call request
+                         messages += self.cur_messages[-1:] # Get the assistant message we just added
+                         messages += tool_results # Add the tool results
 
-            # Calculate costs for successful responses
+                         # Clear partial calls before the next LLM call
+                         self.partial_tool_calls = []
+                         self.partial_response_content = "" # Clear content as well
+
+                         # Send back to LLM with tool results
+                         # Re-enter the loop essentially, but simplified here
+                         # We need to handle potential nested tool calls, errors, etc.
+                         # For simplicity, assume one round of tool calls for now.
+                         self.io.log_llm_history("TO LLM (after stream tools)", format_messages(messages))
+                         hash_object, completion = model.send_completion(
+                             messages,
+                             tools=[self.web_search_tool],
+                             tool_choice="auto",
+                             stream=self.stream,
+                             temperature=self.temperature,
+                         )
+                         self.chat_completion_call_hashes.append(hash_object.hexdigest())
+                         # Show the final response after tool execution
+                         yield from self.show_send_output_stream(completion)
+                     # === End Tool Execution Loop (Streaming) ===
+            else:
+                 # Non-streaming case
+                 self.show_send_output(completion)
+                 # === Tool Execution Loop (Non-Streaming) ===
+                 if self.partial_tool_calls:
+                     tool_results = self.execute_tool_calls(self.partial_tool_calls)
+                     self.add_assistant_reply_to_cur_messages() # Add assistant's tool_call request
+                     messages += self.cur_messages[-1:] # Get the assistant message
+                     messages += tool_results # Add tool results
+
+                     # Clear partial calls before the next LLM call
+                     self.partial_tool_calls = []
+                     self.partial_response_content = ""
+
+                     # Send back to LLM
+                     self.io.log_llm_history("TO LLM (after non-stream tools)", format_messages(messages))
+                     hash_object, completion = model.send_completion(
+                         messages,
+                         tools=[self.web_search_tool],
+                         tool_choice="auto",
+                         stream=self.stream,
+                         temperature=self.temperature,
+                     )
+                     self.chat_completion_call_hashes.append(hash_object.hexdigest())
+                     # Show final response
+                     self.show_send_output(completion)
+                 # === End Tool Execution Loop (Non-Streaming) ===
+
+
+            # Calculate costs for successful responses (moved down)
             self.calculate_and_show_tokens_and_cost(messages, completion)
 
         except LiteLLMExceptions().exceptions_tuple() as err:
@@ -1711,14 +1833,101 @@ class Coder:
             self.keyboard_interrupt()
             raise kbi
         finally:
-            self.io.log_llm_history(
+            self.io.log_llm_history( # Correctly indented log call
                 "LLM RESPONSE",
                 format_content("ASSISTANT", self.partial_response_content),
             )
 
-            if self.partial_response_content:
-                self.io.ai_output(self.partial_response_content)
-            elif self.partial_response_function_call:
+        # Tool call handling is now integrated into the send loop above
+        # This block is only for displaying final content if no tool calls were made *initially*
+        # or after the tool loop finishes. The display logic is inside show_send_output.
+
+        # if not self.partial_tool_calls: # Check if tool calls were handled in the loop
+        #     if self.partial_response_content:
+        #         self.io.ai_output(self.partial_response_content)
+        #     elif self.partial_response_function_call:
+        #         # TODO: push this into subclasses
+        #         args = self.parse_partial_args()
+        #         if args:
+        #             self.io.ai_output(json.dumps(args, indent=4))
+
+    def execute_tool_calls(self, tool_calls):
+        """Executes the requested tool calls and returns the results."""
+        tool_messages = []
+        for tool_call in tool_calls:
+            # Handle tool_call as a dictionary
+            function_info = tool_call.get("function", {})
+            function_name = function_info.get("name")
+            tool_call_id = tool_call.get("id")
+            args_str = function_info.get("arguments", "{}") # Default to empty JSON object string
+
+            if not function_name or not tool_call_id:
+                 self.io.tool_error(f"Skipping invalid tool call object: {tool_call}")
+                 continue
+
+            # Removed: self.io.tool_output(f"Executing tool: {function_name} (ID: {tool_call_id})")
+
+            try:
+                args = json.loads(args_str)
+            except json.JSONDecodeError:
+                error_message = f"Error: Invalid JSON arguments received for tool {function_name}: {args_str}"
+                self.io.tool_error(error_message)
+                tool_messages.append({
+                    "tool_call_id": tool_call_id,
+                    "role": "tool",
+                    "name": function_name,
+                    "content": error_message,
+                })
+                continue
+
+            if function_name == "web_search":
+                query = args.get("query")
+                if not query:
+                    error_message = f"Error: Missing 'query' argument for web_search."
+                    self.io.tool_error(error_message)
+                    content = error_message
+                else:
+                    browser = self._get_browser()
+                    if not browser:
+                        error_message = "Error: Browser could not be initialized."
+                        self.io.tool_error(error_message)
+                        content = error_message
+                    else:
+                        try:
+                            search_content, _ = browser.search_google(query)
+                            if search_content is None:
+                                content = "Error: Failed to perform web search."
+                                self.io.tool_error(content)
+                            else:
+                                # Limit content length if necessary
+                                max_len = 4000 # Example limit, adjust as needed
+                                if len(search_content) > max_len:
+                                     content = search_content[:max_len] + "\n... (truncated)"
+                                else:
+                                     content = search_content
+                                # Removed: self.io.tool_output(f"Web search for '{query}' completed.")
+                        except Exception as e:
+                            error_message = f"Error during web search for '{query}': {e}"
+                            self.io.tool_error(error_message)
+                            content = error_message
+            else:
+                error_message = f"Error: Unknown tool function '{function_name}'"
+                self.io.tool_error(error_message)
+                content = error_message
+
+            tool_messages.append({
+                "tool_call_id": tool_call_id,
+                "role": "tool",
+                "name": function_name,
+                "content": content,
+            })
+
+        self.io.log_llm_history("TOOL RESULTS", format_messages(tool_messages))
+        return tool_messages
+
+
+    def show_send_output(self, completion):
+        if self.verbose:
                 # TODO: push this into subclasses
                 args = self.parse_partial_args()
                 if args:
@@ -1735,10 +1944,23 @@ class Coder:
         show_func_err = None
         show_content_err = None
         try:
-            if completion.choices[0].message.tool_calls:
-                self.partial_response_function_call = (
-                    completion.choices[0].message.tool_calls[0].function
-                )
+            # Handle modern tool_calls for non-streaming
+            tool_calls = completion.choices[0].message.tool_calls
+            if tool_calls:
+                 # Store the tool calls, actual execution needs the loop structure
+                 self.partial_tool_calls = tool_calls
+                 # We might get content alongside tool calls, handle that too
+                 try:
+                     self.partial_response_content = completion.choices[0].message.content or ""
+                 except AttributeError:
+                     pass # No content, just tool calls
+                 # Exit the non-streaming display early if a tool call is present
+                 # The main `send` loop needs to handle execution
+                 return # Or raise a specific exception?
+
+            # Fallback for older function_call if tool_calls is not present
+            elif hasattr(completion.choices[0].message, 'function_call') and completion.choices[0].message.function_call:
+                 self.partial_response_function_call = completion.choices[0].message.function_call
         except AttributeError as func_err:
             show_func_err = func_err
 
@@ -1787,9 +2009,11 @@ class Coder:
 
     def show_send_output_stream(self, completion):
         received_content = False
+        self.partial_tool_calls = [] # Initialize for streaming
 
         for chunk in completion:
-            if len(chunk.choices) == 0:
+            # print(chunk) # Debugging chunk content
+            if not chunk.choices:
                 continue
 
             if (
@@ -1808,7 +2032,36 @@ class Coder:
                         self.partial_response_function_call[k] = v
                 received_content = True
             except AttributeError:
-                pass
+                 # Check for tool_calls in stream
+                 try:
+                     tool_calls_chunk = chunk.choices[0].delta.tool_calls
+                     if tool_calls_chunk:
+                         # Process tool call chunks (this is complex for streaming)
+                         # For now, let's just accumulate them. Proper handling needs state.
+                         # A simple accumulation might merge arguments incorrectly.
+                         # A better approach involves tracking calls by index.
+                         # Simplified for now: Assume one tool call, append details.
+                         # This WILL break with multiple parallel tool calls.
+                         for tool_call_delta in tool_calls_chunk:
+                             index = tool_call_delta.index
+                             if index >= len(self.partial_tool_calls):
+                                 # Start a new tool call entry
+                                 self.partial_tool_calls.append({
+                                     "id": tool_call_delta.id,
+                                     "type": "function",
+                                     "function": {"name": "", "arguments": ""}
+                                 })
+                             current_call = self.partial_tool_calls[index]
+                             if tool_call_delta.id:
+                                 current_call["id"] = tool_call_delta.id
+                             if tool_call_delta.function:
+                                 if tool_call_delta.function.name:
+                                     current_call["function"]["name"] = tool_call_delta.function.name
+                                 if tool_call_delta.function.arguments:
+                                     current_call["function"]["arguments"] += tool_call_delta.function.arguments
+                         received_content = True # Mark that we received something
+                 except AttributeError:
+                     pass # No function_call or tool_calls in this chunk
 
             text = ""
 
@@ -1858,9 +2111,22 @@ class Coder:
                 yield text
 
         if not received_content:
-            self.io.tool_warning("Empty response received from LLM. Check your provider account?")
+            # Check if we only received tool calls and no content
+            if not self.partial_response_content and self.partial_tool_calls:
+                 # Log the tool call request after stream ends
+                 self.io.tool_output(f"LLM requested tool call(s): {self.partial_tool_calls}")
+                 # TODO: Implement tool execution loop after stream finishes
+                 pass
+            elif not received_content:
+                 self.io.tool_warning("Empty response received from LLM. Check your provider account?")
+
 
     def live_incremental_response(self, final):
+        # Don't display tool calls incrementally via markdown stream
+        if self.partial_tool_calls and final:
+             # Tool calls are handled after the stream finishes
+             return
+
         show_resp = self.render_incremental_response(final)
         # Apply any reasoning tag formatting
         show_resp = replace_reasoning_tags(show_resp, self.reasoning_tag_name)
