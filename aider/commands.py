@@ -498,9 +498,10 @@ class Commands:
 
         # chat history
         msgs = self.coder.done_messages + self.coder.cur_messages
+        chat_tokens = 0
         if msgs:
-            tokens = self.coder.main_model.token_count(msgs)
-            res.append((tokens, "chat history", "use /clear to clear"))
+            chat_tokens = self.coder.main_model.token_count(msgs)
+            res.append((chat_tokens, "chat history", "use /clear to clear"))
 
         # repo map
         other_files = set(self.coder.get_all_abs_files()) - set(self.coder.abs_fnames)
