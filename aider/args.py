@@ -61,6 +61,14 @@ def get_parser(default_config_files, git_root):
         help="Specify the Anthropic API key",
     )
     group.add_argument(
+        "--google-api-key",
+        help="Specify the Google API Key for Custom Search API",
+    )
+    group.add_argument(
+        "--google-cse-id",
+        help="Specify the Google Custom Search Engine ID",
+    )
+    group.add_argument(
         "--openai-api-base",
         help="Specify the api base url",
     )
@@ -786,6 +794,12 @@ def get_parser(default_config_files, git_root):
     group.add_argument(
         "--editor",
         help="Specify which editor to use for the /editor command",
+    )
+    group.add_argument(
+        "--headless-browser",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable/disable running the browser in headless mode for /browse (default: True)",
     )
 
     ##########
