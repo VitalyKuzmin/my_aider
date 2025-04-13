@@ -832,8 +832,58 @@ def get_sample_yaml():
     parser.parse_known_args()
 
     parser.formatter_class = YamlHelpFormatter
+    default_yaml = argparse.ArgumentParser.format_help(parser)
 
-    return argparse.ArgumentParser.format_help(parser)
+    # Post-process the YAML string to move google keys under api-key:
+    lines = default_yaml.splitlines()
+    output_lines = []
+    google_keys_lines = []
+    in_api_keys_group = False
+    api_keys_group_heading = "# API Keys and settings"
+    processed_google_keys = False
+
+    # First pass: collect google keys and remove them from their original place
+    temp_lines = []
+    for line in lines:
+        stripped_line = line.strip()
+        if stripped_line == api_keys_group_heading:
+            in_api_keys_group = True
+            temp_lines.append(line)
+        elif in_api_keys_group:
+            is_google_key_line = False
+            if stripped_line.startswith("google-api-key:") or stripped_line.startswith("# google-api-key"):
+                google_keys_lines.append(line)
+                is_google_key_line = True
+            elif stripped_line.startswith("google-cse-id:") or stripped_line.startswith("# google-cse-id"):
+                google_keys_lines.append(line)
+                is_google_key_line = True
+
+            if not is_google_key_line:
+                temp_lines.append(line)
+                # Detect end of group heuristically if needed, but finding api-key: is better
+                if not line.startswith(" ") and not line.startswith("#"):
+                    in_api_keys_group = False
+        else:
+            temp_lines.append(line)
+
+    # Second pass: insert google keys under api-key:
+    for line in temp_lines:
+         output_lines.append(line)
+         stripped_line = line.strip()
+         # Check if this is the line defining api-key and we haven't processed keys yet
+         if stripped_line.startswith("api-key:") and not processed_google_keys:
+              # Add the google keys indented under api-key
+              for g_line in google_keys_lines:
+                  # Add indentation (2 spaces)
+                  output_lines.append("  " + g_line.lstrip())
+              processed_google_keys = True # Ensure we only add them once
+
+    # If api-key: line wasn't found, append google keys at the end (should not happen in standard output)
+    if not processed_google_keys and google_keys_lines:
+         output_lines.extend(google_keys_lines)
+
+
+    return "\n".join(output_lines)
 
 
 def get_sample_dotenv():

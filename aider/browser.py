@@ -108,12 +108,27 @@ class Browser:
             self.io.tool_error("WebDriver is not initialized. Cannot perform search.")
             return None, None
 
-        # Check for API keys, prioritizing args/config file over environment variables
-        api_key = self.args.google_api_key or os.environ.get("GOOGLE_API_KEY")
-        cse_id = self.args.google_cse_id or os.environ.get("GOOGLE_CSE_ID")
+        # Extract API keys from the api_key list in args/config first
+        api_key = None
+        cse_id = None
+        if self.args.api_key and isinstance(self.args.api_key, list):
+            for item in self.args.api_key:
+                if isinstance(item, str) and "=" in item:
+                    provider, key = item.split("=", 1)
+                    if provider == "google-api-key":
+                        api_key = key
+                    elif provider == "google-cse-id":
+                        cse_id = key
+
+        # Fallback to environment variables if not found in config list
+        if not api_key:
+            api_key = os.environ.get("GOOGLE_API_KEY")
+        if not cse_id:
+            cse_id = os.environ.get("GOOGLE_CSE_ID")
+
 
         if api_key and cse_id:
-            # Use API if keys are available
+            # Use API if keys are available and not empty strings
             return self._search_google_api(query, api_key, cse_id)
         else:
             # Fallback to Selenium with a warning
