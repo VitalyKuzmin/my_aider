@@ -1033,7 +1033,47 @@ class Commands:
         self.cmd_exit(args)
 
     def cmd_ls(self, args):
-        "List all known files and indicate which are included in the chat session"
+        "List files included in the chat session and show counts for other known files"
+
+        files = self.coder.get_all_relative_files()
+
+        other_files = []
+        chat_files = []
+        read_only_files = []
+        for file in files:
+            abs_file_path = self.coder.abs_root_path(file)
+            if abs_file_path in self.coder.abs_fnames:
+                chat_files.append(file)
+            else:
+                other_files.append(file)
+
+        # Add read-only files
+        for abs_file_path in self.coder.abs_read_only_fnames:
+            rel_file_path = self.coder.get_rel_fname(abs_file_path)
+            read_only_files.append(rel_file_path)
+
+        if not chat_files and not other_files and not read_only_files:
+            self.io.tool_output("\nNo files in chat, git repo, or read-only list.")
+            return
+
+        if other_files:
+            self.io.tool_output(f"{len(other_files)} repo files not in the chat.")
+
+        if read_only_files:
+            self.io.tool_output(f"{len(read_only_files)} read-only files.")
+
+        if chat_files:
+            self.io.tool_output("\nFiles in chat:\n")
+            for file in chat_files:
+                self.io.tool_output(f"  {file}")
+        else:
+            # Add a newline if there were counts printed but no chat files
+            if other_files or read_only_files:
+                self.io.tool_output("")
+
+
+    def cmd_ls_all(self, args):
+        "List all known files (repo, read-only, chat)"
 
         files = self.coder.get_all_relative_files()
 
@@ -1058,18 +1098,19 @@ class Commands:
 
         if other_files:
             self.io.tool_output("Repo files not in the chat:\n")
-        for file in other_files:
-            self.io.tool_output(f"  {file}")
+            for file in other_files:
+                self.io.tool_output(f"  {file}")
 
         if read_only_files:
             self.io.tool_output("\nRead-only files:\n")
-        for file in read_only_files:
-            self.io.tool_output(f"  {file}")
+            for file in read_only_files:
+                self.io.tool_output(f"  {file}")
 
         if chat_files:
             self.io.tool_output("\nFiles in chat:\n")
-        for file in chat_files:
-            self.io.tool_output(f"  {file}")
+            for file in chat_files:
+                self.io.tool_output(f"  {file}")
+
 
     def basic_help(self):
         commands = sorted(self.get_commands())
