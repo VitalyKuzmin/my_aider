@@ -2,9 +2,11 @@ import glob
 import os
 import re
 import subprocess
+import time
 import sys
 import tempfile
 from collections import OrderedDict
+from datetime import datetime
 from os.path import expanduser
 from pathlib import Path
 
@@ -1592,6 +1594,178 @@ class Commands:
             )
         except Exception as e:
             self.io.tool_error(f"An unexpected error occurred while copying to clipboard: {str(e)}")
+
+    def _save_chat_history(self, filename_arg=None):
+        """Saves the current chat history to a markdown file."""
+        history_dir = Path(self.coder.root) / ".aider.chat.history"
+        history_dir.mkdir(parents=True, exist_ok=True)
+
+        all_messages = self.coder.done_messages + self.coder.cur_messages
+        if not all_messages:
+            # self.io.tool_warning("Chat history is empty. Nothing to save.")
+            return None # Indicate nothing was saved
+
+        # Determine filename
+        if filename_arg:
+            filename = filename_arg
+            if not filename.endswith(".md"):
+                filename += ".md"
+            save_path = history_dir / filename
+        else:
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            save_path = history_dir / f"chat_{timestamp}.md"
+
+        # Format history as markdown
+        markdown_history = ""
+        for msg in all_messages:
+            role = msg.get("role", "unknown").capitalize()
+            content = msg.get("content", "")
+            # Handle potential multi-part content (like images) gracefully
+            if isinstance(content, list):
+                text_content = ""
+                for part in content:
+                    if part.get("type") == "text":
+                        text_content += part.get("text", "") + "\n"
+                    elif part.get("type") == "image_url":
+                        # Represent image simply for history file
+                        image_url = part.get("image_url", {}).get("url", "unknown_image")
+                        text_content += f"[Image: {image_url}]\n"
+                content = text_content.strip()
+            elif not isinstance(content, str):
+                 content = str(content) # Ensure content is string
+
+            markdown_history += f"**{role}**:\n\n{content}\n\n---\n\n"
+
+        # Save to file
+        try:
+            with open(save_path, "w", encoding=self.io.encoding) as f:
+                f.write(markdown_history)
+            return save_path
+        except Exception as e:
+            self.io.tool_error(f"Error saving chat history to {save_path}: {e}")
+            return None # Indicate saving failed
+
+    def cmd_new(self, args):
+        "Save the current chat history to a file and start a new chat session"
+        saved_path = self._save_chat_history(args.strip())
+
+        if saved_path:
+             self.io.tool_output(f"Chat history saved to: {saved_path.relative_to(self.coder.root)}")
+        elif not (self.coder.done_messages or self.coder.cur_messages):
+             self.io.tool_warning("Current chat history is empty. Nothing to save.")
+        # else: error message was already printed by _save_chat_history
+
+        # Clear current history and start new session regardless of save success,
+        # unless saving failed due to an error (indicated by saved_path being None AND history not empty)
+        if saved_path is not None or not (self.coder.done_messages or self.coder.cur_messages):
+            self._clear_chat_history()
+            self.io.tool_output("Started a new chat session.")
+
+    def _parse_history_markdown(self, markdown_content):
+        """Parses markdown history file back into message list"""
+        messages = []
+        # Split by the separator, removing the last empty split if present
+        raw_messages = re.split(r'\n\n---\n\n', markdown_content.strip())
+        if raw_messages and not raw_messages[-1].strip():
+            raw_messages.pop()
+
+        for raw_msg in raw_messages:
+            match = re.match(r'\*\*(User|Assistant|System|Tool)\*\*:\n\n(.*)', raw_msg, re.DOTALL)
+            if match:
+                role = match.group(1).lower()
+                content = match.group(2).strip()
+                # Basic handling for image representation (might need refinement)
+                if content.startswith("[Image: ") and content.endswith("]"):
+                     # This is a simplified representation, not restoring the full image object
+                     messages.append({"role": role, "content": content})
+                else:
+                     messages.append({"role": role, "content": content})
+            else:
+                # Handle potential parsing errors or malformed entries
+                self.io.tool_warning(f"Could not parse message block: {raw_msg[:100]}...")
+                messages.append({"role": "system", "content": f"[Unparseable message block]\n{raw_msg}"})
+        return messages
+
+    def cmd_history(self, args):
+        "List saved chat history files and optionally load one"
+        history_dir = Path(self.coder.root) / ".aider.chat.history"
+        if not history_dir.exists(): # Check existence first
+            self.io.tool_output("Chat history directory (.aider.chat.history/) not found.")
+            return
+        elif not history_dir.is_dir(): # Then check if it's actually a directory
+             self.io.tool_error(f"Error: {history_dir.relative_to(self.coder.root)} exists but is not a directory.")
+             return
+
+        history_files = sorted(
+            history_dir.glob("*.md"),
+            key=lambda f: f.stat().st_mtime,
+            reverse=True
+        )
+
+        if not history_files:
+            self.io.tool_output("Chat history directory (.aider.chat.history/) is empty.")
+            return
+
+        self.io.tool_output("Available chat history files (most recent first):")
+        for i, fpath in enumerate(history_files):
+            self.io.tool_output(f"[{i+1}] {fpath.name}")
+
+        while True:
+            try:
+                inp = self.io.prompt_ask(
+                    "Enter number to load history, or 'q' to cancel:",
+                ).strip().lower()
+
+                if inp == 'q':
+                    return
+                if not inp: # Allow empty input to cancel
+                    return
+
+                choice = int(inp)
+                if 1 <= choice <= len(history_files):
+                    selected_path = history_files[choice - 1]
+                    break
+                else:
+                    self.io.tool_error(f"Invalid choice. Please enter a number between 1 and {len(history_files)}.")
+            except ValueError:
+                self.io.tool_error("Invalid input. Please enter a number or 'q'.")
+            except EOFError:
+                return # Handle Ctrl+D
+
+        # Save current session before loading
+        self.io.tool_output("Saving current chat session...")
+        saved_current_path = self._save_chat_history()
+        if saved_current_path:
+            self.io.tool_output(f"Current chat history saved to: {saved_current_path.relative_to(self.coder.root)}")
+        elif self.coder.done_messages or self.coder.cur_messages:
+             self.io.tool_error("Failed to save current chat history. Aborting load.")
+             return
+        # else: current history was empty, no need to save
+
+        # Load selected history
+        self.io.tool_output(f"Loading history from {selected_path.name}...")
+        try:
+            with open(selected_path, "r", encoding=self.io.encoding) as f:
+                markdown_content = f.read()
+
+            loaded_messages = self._parse_history_markdown(markdown_content)
+
+            if not loaded_messages:
+                 self.io.tool_error(f"Could not parse any messages from {selected_path.name}. Aborting load.")
+                 # Consider restoring the previously saved session? For now, just abort.
+                 return
+
+            self._clear_chat_history()
+            self.coder.done_messages = loaded_messages
+            # Maybe add a system message indicating history load?
+            # self.coder.done_messages.append({"role": "system", "content": f"Loaded history from {selected_path.name}"})
+            self.io.tool_output(f"Successfully loaded chat history from {selected_path.name}.")
+
+        except FileNotFoundError:
+            self.io.tool_error(f"History file not found: {selected_path}")
+        except Exception as e:
+            self.io.tool_error(f"Error loading history file {selected_path.name}: {e}")
+
 
     def cmd_report(self, args):
         "Report a problem by opening a GitHub Issue"
