@@ -423,6 +423,52 @@ class Commands:
         self.coder.done_messages = []
         self.coder.cur_messages = []
 
+    def cmd_forget(self, args):
+        "Remove the last user query and assistant response from the chat history"
+        all_messages = self.coder.done_messages + self.coder.cur_messages
+        num_messages = len(all_messages)
+
+        if num_messages < 2:
+            self.io.tool_warning("Not enough messages in history to forget.")
+            return
+
+        last_message = all_messages[-1]
+        second_last_message = all_messages[-2]
+
+        # Check if the last two messages are a user/assistant pair
+        # Usually user then assistant, but handle assistant then user just in case
+        if not (
+            (second_last_message["role"] == "user" and last_message["role"] == "assistant")
+            or (second_last_message["role"] == "assistant" and last_message["role"] == "user")
+        ):
+            self.io.tool_warning(
+                "The last two messages are not a user/assistant pair. Cannot forget."
+            )
+            return
+
+        # Determine how many messages are in cur_messages vs done_messages
+        num_cur = len(self.coder.cur_messages)
+
+        if num_cur >= 2:
+            # Both messages are in cur_messages
+            self.coder.cur_messages = self.coder.cur_messages[:-2]
+        elif num_cur == 1:
+            # One in cur_messages, one in done_messages
+            self.coder.cur_messages = []
+            if self.coder.done_messages:
+                self.coder.done_messages = self.coder.done_messages[:-1]
+        else: # num_cur == 0
+            # Both messages are in done_messages
+            if len(self.coder.done_messages) >= 2:
+                self.coder.done_messages = self.coder.done_messages[:-2]
+            else:
+                # Should not happen based on initial check, but safety first
+                self.io.tool_warning("Error determining message locations.")
+                return
+
+        self.io.tool_output("Removed the last user query and assistant response from the history.")
+
+
     def cmd_reset(self, args):
         "Drop all files and clear the chat history"
         self._drop_all_files()
