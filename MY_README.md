@@ -48,6 +48,10 @@
     ```bash
     pipx install git+https://github.com/VitalyKuzmin/my_aider.git
     ```
+    *   **Примечание:** Если `pipx` сообщает, что пакет `my-aider-chat` уже установлен (`'my-aider-chat' already seems to be installed`), используйте флаг `--force` для принудительной переустановки/обновления:
+        ```bash
+        pipx install --force git+https://github.com/VitalyKuzmin/my_aider.git
+        ```
 
 3.  **Обновление:**
     Для обновления до последней версии из репозитория:

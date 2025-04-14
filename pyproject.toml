@@ -1,7 +1,7 @@
 
 [project]
-name = "aider-chat"
-description = "Aider is AI pair programming in your terminal"
+name = "my-aider-chat"
+description = "Aider is AI pair programming in your terminal (VitalyKuzmin fork)"
 readme = "README.md"
 classifiers = [
     "Development Status :: 4 - Beta",
