@@ -31,11 +31,13 @@
     *(Возможно, потребуется `pip3` вместо `pip`)*
     После этого шага вы можете запускать `my_aider` из командной строки, пока активно ваше виртуальное окружение (`source venv/bin/activate`).
 
-## Глобальная установка с помощью pipx (Рекомендуется)
+## Глобальная установка с помощью pipx (Рекомендуется для macOS, Linux и Windows)
 
-`pipx` — это инструмент для установки и запуска Python-приложений в изолированных окружениях. Это рекомендуемый способ сделать `my_aider` доступным глобально без конфликтов с другими пакетами.
+`pipx` — это кроссплатформенный инструмент для установки и запуска Python-приложений в изолированных окружениях. Он работает в macOS, Linux и Windows. Это рекомендуемый способ сделать `my_aider` доступным глобально без конфликтов с другими пакетами.
 
-**Важно:** Этот проект требует **Python 3.11**. Убедитесь, что Python 3.11 установлен в вашей системе. Вы можете установить его, например, с помощью Homebrew: `brew install python@3.11`.
+**Важно:** Этот проект требует **Python 3.11**. Убедитесь, что Python 3.11 установлен и доступен в вашей системе.
+*   **macOS:** Вы можете установить его, например, с помощью Homebrew: `brew install python@3.11`.
+*   **Windows:** Вы можете скачать установщик с [официального сайта Python](https://www.python.org/downloads/windows/) или установить через Microsoft Store. Убедитесь, что Python 3.11 добавлен в ваш системный PATH во время установки.
 
 1.  **Установите pipx** (если он еще не установлен):
     Следуйте [официальной инструкции по установке pipx](https://pipx.pypa.io/stable/installation/). Обычно это делается командой:
@@ -50,8 +52,15 @@
     ```bash
     pipx install --python python3.11 git+https://github.com/VitalyKuzmin/my_aider.git
     ```
-    *   Замените `python3.11` на точный путь к вашему исполняемому файлу Python 3.11, если он не находится в PATH как `python3.11`. Вы можете найти путь командой `which python3.11` (на macOS/Linux).
-    *   **Примечание:** Если `pipx` сообщает, что пакет `my-aider-chat` уже установлен (`'my-aider-chat' already seems to be installed`), используйте флаг `--force` для принудительной переустановки/обновления:
+    *   **Указание Python 3.11:**
+        *   **macOS/Linux:** Если `python3.11` не находится в вашем PATH, замените `python3.11` на полный путь к исполняемому файлу (например, `/opt/homebrew/bin/python3.11` или результат `which python3.11`).
+        *   **Windows:** Если `python3.11` не распознается, вам может потребоваться указать полный путь к `python.exe` для версии 3.11 (например, `C:\Users\ИмяПользователя\AppData\Local\Programs\Python\Python311\python.exe`) или использовать `py -3.11` вместо `python3.11`, если у вас установлен Python Launcher для Windows:
+          ```bash
+          pipx install --python "C:\путь\к\Python311\python.exe" git+https://github.com/VitalyKuzmin/my_aider.git
+          # или, если установлен Python Launcher:
+          pipx install --python py -3.11 git+https://github.com/VitalyKuzmin/my_aider.git
+          ```
+    *   **Принудительная установка/обновление:** Если `pipx` сообщает, что пакет `my-aider-chat` уже установлен (`'my-aider-chat' already seems to be installed`), используйте флаг `--force`:
         ```bash
         pipx install --force --python python3.11 git+https://github.com/VitalyKuzmin/my_aider.git
         ```
