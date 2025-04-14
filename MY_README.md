@@ -35,6 +35,8 @@
 
 `pipx` — это инструмент для установки и запуска Python-приложений в изолированных окружениях. Это рекомендуемый способ сделать `my_aider` доступным глобально без конфликтов с другими пакетами.
 
+**Важно:** Этот проект требует **Python 3.11**. Убедитесь, что Python 3.11 установлен в вашей системе. Вы можете установить его, например, с помощью Homebrew: `brew install python@3.11`.
+
 1.  **Установите pipx** (если он еще не установлен):
     Следуйте [официальной инструкции по установке pipx](https://pipx.pypa.io/stable/installation/). Обычно это делается командой:
     ```bash
@@ -43,14 +45,15 @@
     ```
     *(Возможно, потребуется перезапустить терминал после `ensurepath`)*
 
-2.  **Установите `my_aider` с помощью pipx напрямую из GitHub:**
-    Эта команда установит последнюю версию из ветки `main` вашего репозитория `origin`. `pipx` автоматически создаст изолированное окружение и добавит команду `my_aider` (как указано в `pyproject.toml`) в ваш PATH.
+2.  **Установите `my_aider` с помощью pipx, указав Python 3.11:**
+    Эта команда установит последнюю версию из ветки `main` вашего репозитория `origin`, используя Python 3.11 для создания изолированного окружения. `pipx` добавит команду `my_aider` в ваш PATH.
     ```bash
-    pipx install git+https://github.com/VitalyKuzmin/my_aider.git
+    pipx install --python python3.11 git+https://github.com/VitalyKuzmin/my_aider.git
     ```
+    *   Замените `python3.11` на точный путь к вашему исполняемому файлу Python 3.11, если он не находится в PATH как `python3.11`. Вы можете найти путь командой `which python3.11` (на macOS/Linux).
     *   **Примечание:** Если `pipx` сообщает, что пакет `my-aider-chat` уже установлен (`'my-aider-chat' already seems to be installed`), используйте флаг `--force` для принудительной переустановки/обновления:
         ```bash
-        pipx install --force git+https://github.com/VitalyKuzmin/my_aider.git
+        pipx install --force --python python3.11 git+https://github.com/VitalyKuzmin/my_aider.git
         ```
 
 3.  **Обновление:**
