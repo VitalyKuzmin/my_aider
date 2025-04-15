@@ -613,9 +613,10 @@ class Coder:
         if not self.pretty:
             return False
 
-        # only show pretty output if fences are the normal triple-backtick
-        if self.fence[0][0] != "`":
-            return False
+        # Always allow pretty output if self.pretty is True, regardless of fence type
+        # The MarkdownStream should handle rendering correctly.
+        # if self.fence[0][0] != "`":
+        #    return False
 
         return True
 
@@ -1833,10 +1834,18 @@ class Coder:
             self.keyboard_interrupt()
             raise kbi
         finally:
-            self.io.log_llm_history( # Correctly indented log call
+            self.io.log_llm_history(
                 "LLM RESPONSE",
                 format_content("ASSISTANT", self.partial_response_content),
             )
+            # Explicitly append history after streaming
+            if self.stream and self.partial_response_content:
+                 self.io.append_chat_history(
+                     self.partial_response_content,
+                     linebreak=False,
+                     blockquote=False,
+                     strip=False
+                 )
 
         # Tool call handling is now integrated into the send loop above
         # This block is only for displaying final content if no tool calls were made *initially*
@@ -2011,7 +2020,7 @@ class Coder:
         received_content = False
         self.partial_tool_calls = [] # Initialize for streaming
 
-        for chunk in completion:
+        for i, chunk in enumerate(completion):
             # print(chunk) # Debugging chunk content
             if not chunk.choices:
                 continue
