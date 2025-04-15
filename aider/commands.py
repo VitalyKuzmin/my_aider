@@ -1772,6 +1772,61 @@ class Commands:
         except Exception as e:
             self.io.tool_error(f"Error loading history file {selected_path.name}: {e}")
 
+    def cmd_clear_history(self, args):
+        "Interactively delete saved chat history files"
+        history_dir = Path(self.coder.root) / ".aider.chat.history"
+        if not history_dir.exists():
+            self.io.tool_output("Chat history directory (.aider.chat.history/) not found.")
+            return
+        elif not history_dir.is_dir():
+            self.io.tool_error(f"Error: {history_dir.relative_to(self.coder.root)} exists but is not a directory.")
+            return
+
+        while True:
+            history_files = sorted(
+                history_dir.glob("*.md"),
+                key=lambda f: f.stat().st_mtime,
+                reverse=True
+            )
+
+            if not history_files:
+                self.io.tool_output("Chat history directory is now empty.")
+                break
+
+            self.io.tool_output("\nSelect history file to delete:")
+            self.io.tool_output("[0] Complete")
+            for i, fpath in enumerate(history_files):
+                self.io.tool_output(f"[{i+1}] {fpath.name}")
+
+            try:
+                inp = self.io.prompt_ask(
+                    "Enter number to delete, or 0 to complete:",
+                ).strip().lower()
+
+                if inp == '0' or inp == 'q' or not inp:
+                    break # Exit the loop
+
+                choice = int(inp)
+                if 1 <= choice <= len(history_files):
+                    selected_path = history_files[choice - 1]
+                    if self.io.confirm_ask(f"Really delete {selected_path.name}?"):
+                        try:
+                            selected_path.unlink()
+                            self.io.tool_output(f"Deleted {selected_path.name}")
+                        except FileNotFoundError:
+                            self.io.tool_error(f"Error: File {selected_path.name} not found (maybe deleted already?).")
+                        except PermissionError:
+                             self.io.tool_error(f"Error: Permission denied to delete {selected_path.name}.")
+                        except OSError as e:
+                            self.io.tool_error(f"Error deleting {selected_path.name}: {e}")
+                    else:
+                        self.io.tool_output("Deletion cancelled.")
+                else:
+                    self.io.tool_error(f"Invalid choice. Please enter a number between 0 and {len(history_files)}.")
+            except ValueError:
+                self.io.tool_error("Invalid input. Please enter a number or 0/q.")
+            except EOFError:
+                break # Handle Ctrl+D as cancel
 
     def cmd_report(self, args):
         "Report a problem by opening a GitHub Issue"
