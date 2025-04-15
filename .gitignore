@@ -3,7 +3,7 @@
 aider.code-workspace
 *.pyc
 .aider*
-aider_chat.egg-info/
+*egg-info/
 build
 dist/
 Gemfile.lock
@@ -18,3 +18,4 @@ aider/_version.py
 tmp.benchmarks/
 !.aider.chat.history.md
 !.aider.chat.history/
+# my_aider_chat.egg-info/
