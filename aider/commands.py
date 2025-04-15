@@ -1764,6 +1764,7 @@ class Commands:
             self.coder.done_messages = loaded_messages
             # Maybe add a system message indicating history load?
             # self.coder.done_messages.append({"role": "system", "content": f"Loaded history from {selected_path.name}"})
+            self.io.rewrite_chat_history(self.coder.done_messages) # Update the main history file
             self.io.tool_output(f"Successfully loaded chat history from {selected_path.name}.")
 
         except FileNotFoundError:

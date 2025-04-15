@@ -1100,6 +1100,24 @@ class InputOutput:
                 # Consider disabling further writes if clearing fails critically
                 # self.chat_history_file = None
 
+    def rewrite_chat_history(self, messages):
+        """Rewrites the main chat history file with the provided messages."""
+        if self.chat_history_file is not None:
+            try:
+                markdown_content = self._format_messages_to_markdown(messages)
+                current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                # Use 'updated' for clarity when rewriting
+                header = f"\n# aider chat history updated at {current_time}\n\n"
+                full_content = header + markdown_content
+
+                with self.chat_history_file.open("w", encoding=self.encoding, errors="ignore") as f:
+                    f.write(full_content)
+            except (PermissionError, OSError) as err:
+                print(f"Warning: Unable to rewrite chat history file {self.chat_history_file}.")
+                print(err)
+                # Consider disabling further writes if rewriting fails critically
+                # self.chat_history_file = None
+
     def _format_messages_to_markdown(self, messages):
         """Formats a list of message dictionaries into a markdown string."""
         markdown_history = ""
