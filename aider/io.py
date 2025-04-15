@@ -1087,6 +1087,19 @@ class InputOutput:
                 print("\a", end="", flush=True)  # Ring the bell
             self.bell_on_next_input = False  # Clear the flag
 
+    def clear_chat_history_file(self):
+        """Clears the main chat history file."""
+        if self.chat_history_file is not None:
+            try:
+                with self.chat_history_file.open("w", encoding=self.encoding, errors="ignore") as f:
+                    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    f.write(f"\n# aider chat started at {current_time}\n\n")
+            except (PermissionError, OSError) as err:
+                print(f"Warning: Unable to clear chat history file {self.chat_history_file}.")
+                print(err)
+                # Consider disabling further writes if clearing fails critically
+                # self.chat_history_file = None
+
     def toggle_multiline_mode(self):
         """Toggle between normal and multiline input modes"""
         self.multiline_mode = not self.multiline_mode

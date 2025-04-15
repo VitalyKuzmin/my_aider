@@ -1659,6 +1659,7 @@ class Commands:
         # unless saving failed due to an error (indicated by saved_path being None AND history not empty)
         if saved_path is not None or not (self.coder.done_messages or self.coder.cur_messages):
             self._clear_chat_history()
+            self.io.clear_chat_history_file() # Clear the main history file
             self.io.tool_output("Started a new chat session.")
 
     def _parse_history_markdown(self, markdown_content):
