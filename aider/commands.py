@@ -468,7 +468,11 @@ class Commands:
                 self.io.tool_warning("Error determining message locations.")
                 return
 
-        self.io.tool_output("Removed the last user query and assistant response from the history.")
+        # Rewrite the history file with the updated messages
+        new_history = self.coder.done_messages + self.coder.cur_messages
+        self.io.rewrite_chat_history(new_history)
+
+        # self.io.tool_output("Removed the last user query and assistant response from the history.")
 
 
     def cmd_reset(self, args):
