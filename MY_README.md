@@ -13,13 +13,13 @@
 2.  **Создайте и активируйте виртуальное окружение:**
     *   **macOS/Linux:**
         ```bash
-        python3 -m venv .venv
-        source .venv/bin/activate
+        python3.11 -m venv venv
+        source venv/bin/activate
         ```
     *   **Windows:**
         ```bash
         python -m venv venv
-        .\venv\Scripts\activate
+        \venv\Scripts\activate
         ```
     *(Используйте `python` или `python3` в зависимости от вашей системы)*
 
@@ -30,6 +30,11 @@
     ```
     *(Возможно, потребуется `pip3` вместо `pip`)*
     После этого шага вы можете запускать `my_aider` из командной строки, пока активно ваше виртуальное окружение (`source venv/bin/activate`).
+4. **Запустите:**
+    ```bash
+    python -m aider.main
+    ```
+
 
 ## Глобальная установка с помощью pipx (Рекомендуется для macOS, Linux и Windows)
 

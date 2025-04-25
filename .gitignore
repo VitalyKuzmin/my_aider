@@ -12,7 +12,7 @@ _site
 .jekyll-metadata
 aider/__version__.py
 aider/_version.py
-.venv/
+venv/
 .#*
 .gitattributes
 tmp.benchmarks/
