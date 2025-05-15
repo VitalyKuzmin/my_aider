@@ -148,9 +148,6 @@ class Browser:
             except Exception as e:
                 self.io.tool_error(f"An unexpected error occurred during Google search via Selenium: {e}")
                 return None, None
-            except Exception as e:
-                self.io.tool_error(f"An unexpected error occurred during Google search via Selenium: {e}")
-                return None, None
 
     def _search_google_api(self, query, api_key, cse_id):
         """

@@ -697,7 +697,9 @@ class Coder:
     def get_cur_message_text(self):
         text = ""
         for msg in self.cur_messages:
-            text += msg["content"] + "\n"
+            content = msg.get("content")  # Безопасно получаем 'content'
+            if content:  # Добавляем только если content существует
+                text += content + "\n"
         return text
 
     def get_ident_mentions(self, text):
