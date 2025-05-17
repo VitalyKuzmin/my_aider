@@ -26,6 +26,7 @@ from aider.run_cmd import run_cmd
 from aider.scrape import Scraper, install_playwright
 from aider.utils import is_image_file
 from .dump import dump  # noqa: F401
+# from aider.coders.editblock_coder import find_original_update_blocks, EditBlockCoder # Перемещено внутрь cmd_apply_search_replace test
 
 
 class SwitchCoder(Exception):
@@ -2043,6 +2044,86 @@ Just show me the edits I need to make.
             self.io.tool_output("Browser has been quit.")
         else:
             self.io.tool_error("Browser is not running.")
+
+    def cmd_apply_search_replace(self, args):
+        "Apply SEARCH/REPLACE blocks and execute shell commands from clipboard content"
+        from aider.coders.editblock_coder import find_original_update_blocks, EditBlockCoder # Импорт перемещен сюда
+
+        try:
+            clipboard_content = pyperclip.paste()
+            if not clipboard_content:
+                self.io.tool_error("Clipboard is empty.")
+                return
+        except pyperclip.PyperclipException as e:
+            self.io.tool_error(f"Could not read from clipboard: {e}")
+            self.io.tool_output(
+                "You may need to install xclip or xsel on Linux, or pbcopy on macOS."
+            )
+            return
+        except Exception as e:
+            self.io.tool_error(f"An unexpected error occurred while reading from clipboard: {e}")
+            return
+
+        if not isinstance(self.coder, EditBlockCoder):
+            self.io.tool_error(
+                "This command can only be used when the current coder supports"
+                " SEARCH/REPLACE edits (e.g., 'diff' or 'editblock' format)."
+            )
+            return
+
+        self.io.tool_output("Attempting to apply edits from clipboard...")
+
+        try:
+            raw_edits = list(
+                find_original_update_blocks(
+                    clipboard_content,
+                    self.coder.fence,
+                    self.coder.get_inchat_relative_files(),
+                )
+            )
+
+            file_edits = []
+            shell_commands_from_clipboard = []
+            for edit_tuple in raw_edits:
+                if edit_tuple[0] is None:  # Shell command
+                    shell_commands_from_clipboard.append(edit_tuple[1])
+                else:  # File edit
+                    file_edits.append(edit_tuple)
+
+            if not file_edits and not shell_commands_from_clipboard:
+                self.io.tool_output(
+                    "No SEARCH/REPLACE blocks or shell commands found in clipboard content."
+                )
+                return
+
+            if file_edits:
+                # apply_edits will raise ValueError if any edits fail,
+                # which is caught below.
+                self.coder.apply_edits(file_edits)
+                self.io.tool_output(
+                    f"Successfully applied {len(file_edits)} SEARCH/REPLACE blocks from clipboard."
+                )
+
+            if shell_commands_from_clipboard:
+                self.io.tool_output(
+                    f"Found {len(shell_commands_from_clipboard)} shell commands in clipboard"
+                    " content:"
+                )
+                for i, cmd in enumerate(shell_commands_from_clipboard):
+                    self.io.tool_output(f"  [{i+1}] {cmd.strip()}")
+
+                if self.io.confirm_ask("Do you want to execute these shell commands?"):
+                    for cmd in shell_commands_from_clipboard:
+                        self.io.tool_output(f"Executing: {cmd.strip()}")
+                        self.cmd_run(cmd.strip())
+                else:
+                    self.io.tool_output("Shell commands not executed.")
+
+        except ValueError as e:
+            # apply_edits raises ValueError with a pre-formatted message
+            self.io.tool_error(str(e))
+        except Exception as e:
+            self.io.tool_error(f"An unexpected error occurred while applying edits: {e}")
 
 
 def expand_subdir(file_path):
