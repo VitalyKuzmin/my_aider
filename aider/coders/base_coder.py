@@ -1855,11 +1855,39 @@ class Coder:
 
         completion = None
         try:
-            # Use the new 'tools' parameter and 'tool_choice'
+            # Determine tool configuration based on inner_web_search and model type
+            final_tools_to_pass = None
+            final_tool_choice = None # Default to None, LiteLLM usually interprets as 'auto' or model default
+
+            is_gemini_model = "gemini" in model.name.lower()
+            # This should ideally come from model.info metadata in the future
+            is_openai_model_potentially_with_internal_search = "openai" in model.info.get("model_litellm_provider", "").lower()
+
+            if self.args.inner_web_search is False: # Явно указано --no-inner-web-search
+                final_tools_to_pass = [self.web_search_tool]
+                final_tool_choice = "auto"
+            elif self.args.inner_web_search is True: # Явно указано --inner-web-search
+                if is_gemini_model:
+                    final_tool_choice = "google_search_retrieval"
+                    final_tools_to_pass = None
+                elif is_openai_model_potentially_with_internal_search:
+                    final_tools_to_pass = None
+                    final_tool_choice = "auto"
+                else:
+                    final_tools_to_pass = None
+                    final_tool_choice = None
+            else:  # self.args.inner_web_search is None (не указано - поведение по умолчанию)
+                if is_gemini_model:
+                    final_tool_choice = "google_search_retrieval"
+                    final_tools_to_pass = None
+                else:  # Для всех остальных моделей (включая OpenAI по этому пути) - пользовательский инструмент
+                    final_tools_to_pass = [self.web_search_tool]
+                    final_tool_choice = "auto"
+
             hash_object, completion = model.send_completion(
                 messages,
-                tools=[self.web_search_tool], # Pass the tool schema
-                tool_choice="auto", # Let the model decide when to use the tool
+                tools=final_tools_to_pass,
+                tool_choice=final_tool_choice,
                 stream=self.stream,
                 temperature=self.temperature,
             )
@@ -1889,8 +1917,8 @@ class Coder:
                          self.io.log_llm_history("TO LLM (after stream tools)", format_messages(messages))
                          hash_object, completion = model.send_completion(
                              messages,
-                             tools=[self.web_search_tool],
-                             tool_choice="auto",
+                             tools=final_tools_to_pass, # Use determined tools
+                             tool_choice=final_tool_choice, # Use determined tool_choice
                              stream=self.stream,
                              temperature=self.temperature,
                          )
@@ -1916,8 +1944,8 @@ class Coder:
                      self.io.log_llm_history("TO LLM (after non-stream tools)", format_messages(messages))
                      hash_object, completion = model.send_completion(
                          messages,
-                         tools=[self.web_search_tool],
-                         tool_choice="auto",
+                         tools=final_tools_to_pass, # Use determined tools
+                         tool_choice=final_tool_choice, # Use determined tool_choice
                          stream=self.stream,
                          temperature=self.temperature,
                      )

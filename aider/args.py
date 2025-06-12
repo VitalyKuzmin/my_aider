@@ -231,6 +231,17 @@ def get_parser(default_config_files, git_root):
             " If unspecified, defaults to the model's max_chat_history_tokens."
         ),
     )
+    group.add_argument(
+        "--inner-web-search",
+        action=argparse.BooleanOptionalAction,
+        default=None,  # Изменено значение по умолчанию с False на None
+        help=(
+            "Enable using the LLM's built-in web search capabilities (e.g., Gemini Google Search"
+            " Grounding or OpenAI's web_search tool) instead of the custom browser/scraper."
+            " If not specified, Gemini uses its built-in search, others use custom."
+            " (--no-inner-web-search forces custom for all)"
+        ),
+    )
 
     ##########
     group = parser.add_argument_group("Cache settings")
