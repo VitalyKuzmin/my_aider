@@ -26,6 +26,7 @@ from aider.run_cmd import run_cmd
 from aider.scrape import Scraper, install_playwright
 from aider.utils import is_image_file
 from .dump import dump  # noqa: F401
+
 # from aider.coders.editblock_coder import find_original_update_blocks, EditBlockCoder # Перемещено внутрь cmd_apply_search_replace test
 
 
