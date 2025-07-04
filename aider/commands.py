@@ -139,6 +139,30 @@ class Commands:
         models.sanity_check_models(self.io, model)
         raise SwitchCoder(main_model=model)
 
+    def cmd_model_main(self, args):
+        "Switch to the original main model."
+        original_model_name = self.coder.original_main_model_name
+        if not original_model_name or self.coder.main_model.name == original_model_name:
+            self.io.tool_output("Already using the main model.")
+            return
+
+        self.io.tool_output(f"Switching to main model: {original_model_name}")
+        return self.cmd_model(original_model_name)
+
+    def cmd_model_weak(self, args):
+        "Switch to the configured weak model."
+        weak_model = self.coder.main_model.weak_model
+        if weak_model is self.coder.main_model:
+            self.io.tool_output("No distinct weak model configured.")
+            return
+
+        if self.coder.main_model.name == weak_model.name:
+            self.io.tool_output("Already using the weak model.")
+            return
+
+        self.io.tool_output(f"Switching to weak model: {weak_model.name}")
+        return self.cmd_model(weak_model.name)
+
     def cmd_chat_mode(self, args):
         "Switch to a new chat mode"
 

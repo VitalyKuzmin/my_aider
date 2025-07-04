@@ -122,6 +122,8 @@ class Coder:
     commit_language = None
     file_watcher = None
     browser = None # Add browser attribute to Coder
+    original_thinking_tokens = None
+    original_main_model_name = None
 
     @classmethod
     def create(
@@ -183,6 +185,8 @@ class Coder:
                 total_tokens_received=from_coder.total_tokens_received,
                 file_watcher=from_coder.file_watcher,
                 args=from_coder.args, # Pass args from the original coder
+                original_thinking_tokens=from_coder.original_thinking_tokens,
+                original_main_model_name=from_coder.original_main_model_name,
             )
             use_kwargs.update(update)  # override to complete the switch
             use_kwargs.update(kwargs)  # override passed kwargs
@@ -342,6 +346,8 @@ class Coder:
         auto_copy_context=False,
         auto_accept_architect=True,
         args=None, # Need args for browser initialization
+        original_thinking_tokens=None,
+        original_main_model_name=None,
     ):
         # Fill in a dummy Analytics if needed, but it is never .enable()'d
         self.analytics = analytics if analytics is not None else Analytics()
@@ -424,6 +430,16 @@ class Coder:
         # Set the reasoning tag name based on model settings or default
         self.reasoning_tag_name = (
             self.main_model.reasoning_tag if self.main_model.reasoning_tag else REASONING_TAG
+        )
+        self.original_thinking_tokens = (
+            original_thinking_tokens
+            if original_thinking_tokens is not None
+            else self.main_model.get_raw_thinking_tokens()
+        )
+        self.original_main_model_name = (
+            original_main_model_name
+            if original_main_model_name is not None
+            else self.main_model.name
         )
 
         self.stream = stream and main_model.streaming
