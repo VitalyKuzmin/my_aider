@@ -8,6 +8,7 @@ import platform
 import sys
 import time
 from dataclasses import dataclass, fields
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
 
@@ -15,6 +16,7 @@ import json5
 import yaml
 from PIL import Image
 
+from aider import __version__
 from aider.dump import dump  # noqa: F401
 from aider.llm import litellm
 from aider.openrouter import OpenRouterModelManager
@@ -70,6 +72,8 @@ claude-3-opus-20240229
 claude-3-sonnet-20240229
 claude-3-5-sonnet-20240620
 claude-3-5-sonnet-20241022
+claude-sonnet-4-20250514
+claude-opus-4-20250514
 """
 
 ANTHROPIC_MODELS = [ln.strip() for ln in ANTHROPIC_MODELS.splitlines() if ln.strip()]
@@ -77,9 +81,9 @@ ANTHROPIC_MODELS = [ln.strip() for ln in ANTHROPIC_MODELS.splitlines() if ln.str
 # Mapping of model aliases to their canonical names
 MODEL_ALIASES = {
     # Claude models
-    "sonnet": "anthropic/claude-3-7-sonnet-20250219",
+    "sonnet": "anthropic/claude-sonnet-4-20250514",
     "haiku": "claude-3-5-haiku-20241022",
-    "opus": "claude-3-opus-20240229",
+    "opus": "claude-opus-4-20250514",
     # GPT models
     "4": "gpt-4-0613",
     "4o": "gpt-4o",
@@ -89,11 +93,11 @@ MODEL_ALIASES = {
     "3": "gpt-3.5-turbo",
     # Other models
     "deepseek": "deepseek/deepseek-chat",
-    "flash": "gemini/gemini-2.5-flash-preview-04-17",
+    "flash": "gemini/gemini-2.5-flash",
     "quasar": "openrouter/openrouter/quasar-alpha",
     "r1": "deepseek/deepseek-reasoner",
-    "gemini-2.5-pro": "gemini/gemini-2.5-pro-preview-05-06",
-    "gemini": "gemini/gemini-2.5-pro-preview-05-06",
+    "gemini-2.5-pro": "gemini/gemini-2.5-pro",
+    "gemini": "gemini/gemini-2.5-pro",
     "gemini-exp": "gemini/gemini-2.5-pro-exp-03-25",
     "grok3": "xai/grok-3-beta",
     "optimus": "openrouter/openrouter/optimus-alpha",
@@ -790,6 +794,7 @@ class Model(ModelSettings):
         """
         Set the thinking token budget for models that support it.
         Accepts formats: 8096, "8k", "10.5k", "0.5M", "10K", etc.
+        Pass "0" to disable thinking tokens.
         """
         if value is not None:
             num_tokens = self.parse_token_value(value)
@@ -801,9 +806,17 @@ class Model(ModelSettings):
             if self.name.startswith("openrouter/"):
                 if "extra_body" not in self.extra_params:
                     self.extra_params["extra_body"] = {}
-                self.extra_params["extra_body"]["reasoning"] = {"max_tokens": num_tokens}
+                if num_tokens > 0:
+                    self.extra_params["extra_body"]["reasoning"] = {"max_tokens": num_tokens}
+                else:
+                    if "reasoning" in self.extra_params["extra_body"]:
+                        del self.extra_params["extra_body"]["reasoning"]
             else:
-                self.extra_params["thinking"] = {"type": "enabled", "budget_tokens": num_tokens}
+                if num_tokens > 0:
+                    self.extra_params["thinking"] = {"type": "enabled", "budget_tokens": num_tokens}
+                else:
+                    if "thinking" in self.extra_params:
+                        del self.extra_params["thinking"]
 
     def get_raw_thinking_tokens(self):
         """Get formatted thinking token budget if available"""
@@ -873,7 +886,58 @@ class Model(ModelSettings):
     def is_ollama(self):
         return self.name.startswith("ollama/") or self.name.startswith("ollama_chat/")
 
-    def send_completion(self, messages, stream, functions=None, temperature=None, tools=None, tool_choice=None):
+    def github_copilot_token_to_open_ai_key(self, extra_headers):
+        # check to see if there's an openai api key
+        # If so, check to see if it's expire
+        openai_api_key = "OPENAI_API_KEY"
+
+        if openai_api_key not in os.environ or (
+            int(dict(x.split("=") for x in os.environ[openai_api_key].split(";"))["exp"])
+            < int(datetime.now().timestamp())
+        ):
+            import requests
+
+            class GitHubCopilotTokenError(Exception):
+                """Custom exception for GitHub Copilot token-related errors."""
+
+                pass
+
+            # Validate GitHub Copilot token exists
+            if "GITHUB_COPILOT_TOKEN" not in os.environ:
+                raise KeyError("GITHUB_COPILOT_TOKEN environment variable not found")
+
+            github_token = os.environ["GITHUB_COPILOT_TOKEN"]
+            if not github_token.strip():
+                raise KeyError("GITHUB_COPILOT_TOKEN environment variable is empty")
+
+            headers = {
+                "Authorization": f"Bearer {os.environ['GITHUB_COPILOT_TOKEN']}",
+                "Editor-Version": extra_headers["Editor-Version"],
+                "Copilot-Integration-Id": extra_headers["Copilot-Integration-Id"],
+                "Content-Type": "application/json",
+            }
+
+            url = "https://api.github.com/copilot_internal/v2/token"
+            res = requests.get(url, headers=headers)
+            if res.status_code != 200:
+                safe_headers = {k: v for k, v in headers.items() if k != "Authorization"}
+                token_preview = github_token[:5] + "..." if len(github_token) >= 5 else github_token
+                safe_headers["Authorization"] = f"Bearer {token_preview}"
+                raise GitHubCopilotTokenError(
+                    f"GitHub Copilot API request failed (Status: {res.status_code})\n"
+                    f"URL: {url}\n"
+                    f"Headers: {json.dumps(safe_headers, indent=2)}\n"
+                    f"JSON: {res.text}"
+                )
+
+            response_data = res.json()
+            token = response_data.get("token")
+            if not token:
+                raise GitHubCopilotTokenError("Response missing 'token' field")
+
+            os.environ[openai_api_key] = token
+
+    def send_completion(self, messages, functions, stream, temperature=None):
         if os.environ.get("AIDER_SANITY_CHECK_TURNS"):
             sanity_check_messages(messages)
 
@@ -919,6 +983,16 @@ class Model(ModelSettings):
         if self.verbose:
             dump(kwargs)
         kwargs["messages"] = messages
+
+        # Are we using github copilot?
+        if "GITHUB_COPILOT_TOKEN" in os.environ:
+            if "extra_headers" not in kwargs:
+                kwargs["extra_headers"] = {
+                    "Editor-Version": f"aider/{__version__}",
+                    "Copilot-Integration-Id": "vscode-chat",
+                }
+
+            self.github_copilot_token_to_open_ai_key(kwargs["extra_headers"])
 
         res = litellm.completion(**kwargs)
         return hash_object, res
@@ -984,12 +1058,10 @@ def register_models(model_settings_fnames):
 
             for model_settings_dict in model_settings_list:
                 model_settings = ModelSettings(**model_settings_dict)
-                existing_model_settings = next(
-                    (ms for ms in MODEL_SETTINGS if ms.name == model_settings.name), None
-                )
 
-                if existing_model_settings:
-                    MODEL_SETTINGS.remove(existing_model_settings)
+                # Remove all existing settings for this model name
+                MODEL_SETTINGS[:] = [ms for ms in MODEL_SETTINGS if ms.name != model_settings.name]
+                # Add the new settings
                 MODEL_SETTINGS.append(model_settings)
         except Exception as e:
             raise Exception(f"Error loading model settings from {model_settings_fname}: {e}")

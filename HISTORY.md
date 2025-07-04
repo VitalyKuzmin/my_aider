@@ -1,11 +1,65 @@
 # Release history
 
+### Aider v0.85.1
+
+- Display model announcements with no-arg `/model` command.
+- Aider wrote 0% of the code in this release.
+
+### Aider v0.85.0
+
+- Support for Responses API models like o1-pro, o3-pro.
+- Updated pricing for o3.
+- Added support for new Gemini models including `gemini-2.5-pro`, `gemini-2.5-flash`, and `gemini-2.5-pro-preview-06-05` with thinking tokens support.
+- Updated model aliases: `flash` now points to `gemini-2.5-flash` and `gemini` now points to `gemini-2.5-pro`.
+- Added `--add-gitignore-files` flag to enable adding files listed in .gitignore to Aider's editing scope, by omarcinkonis.
+- Added `--commit-language` option to specify the language for commit messages, by Kyosuke Takayama.
+- Enhanced thinking tokens support: can now be disabled by setting to 0, and improved help text with examples.
+- Added MATLAB language support for repository maps, by Matthew Tofano.
+- Added support for OpenAI o3-pro model across multiple providers.
+- Improved GitHub Copilot token handling with better validation and error messages, by Vincent Taverna and Sebastian Estrella.
+- Fixed encoding issues in git diff output and LLM history logging.
+- Enhanced commit message generation to use system prompt prefixes, by Luke Reeves.
+- Improved inline code rendering in Rich markdown output, by Vamsi Talupula.
+- Fixed Vertex AI model name prefixes in settings, by Wietse Venema.
+- Improved `/read-only` command to resolve literal paths correctly, by Matteo Landi.
+- Skip expensive file tracking operations when `--skip-sanity-check-repo` is enabled for better performance, by Makar Ivashko.
+- Ensure pip is available before package installation.
+- Auto-create parent directories for chat history files to prevent startup errors, by contributor.
+- Fixed search block regex to accept optional closing tags when working with HTML content, by Mathis Beer.
+- Co-authored-by attribution is now enabled by default for commit messages.
+- Added Clojure language support for repository maps, by Garrett Hopper.
+- Added custom PostHog analytics configuration options with `--analytics-posthog-host` and `--analytics-posthog-project-api-key` flags, by Vasil Markoukin.
+- Optimized chat history summarization performance, by jayeshthk.
+- Improved kebab-case identifier recognition in repository maps for better code analysis.
+- Increased max tokens for Deepseek models to 65536 for better performance.
+- Aider wrote 21% of the code in this release.
+
+### Aider v0.84.0
+
+- Added support for new Claude models including the Sonnet 4 and Opus 4 series (e.g., `claude-sonnet-4-20250514`,
+`claude-opus-4-20250514`) across various providers. The default `sonnet` and `opus` aliases were updated to these newer
+versions.
+- Added support for the `vertex_ai/gemini-2.5-flash-preview-05-20` model.
+- Fixed OpenRouter token cost calculation for improved accuracy.
+- Updated default OpenRouter models during onboarding to `deepseek/deepseek-r1:free` for the free tier and
+`anthropic/claude-sonnet-4` for paid tiers.
+- Automatically refresh GitHub Copilot tokens when used as OpenAI API keys, by Lih Chen.
+- Aider wrote 79% of the code in this release.
+
+### Aider v0.83.2
+
+- Bumped configargparse to 1.7.1 as 1.7 was pulled.
+- Added shell tab completion for file path arguments (by saviour) and for `--edit-format`/`--editor-edit-format` options.
+- Improved OpenRouter model metadata handling by introducing a local cache, increasing reliability and performance.
+- The `/settings` command now displays detailed metadata for active main, editor, and weak models.
+- Fixed an issue where files explicitly added via the command line were not correctly ignored if listed in `.gitignore`.
+- Improved automatic commit messages by providing more context during their generation, by wangboxue.
+
 ### Aider v0.83.1
 
 - Improved user language detection by correctly normalizing hyphenated language codes (e.g., `en-US` to `en`) and enhancing the validation of locale results.
 - Prevented Aider from instructing the LLM to reply in 'C' or 'POSIX' when these are detected as the system locale.
 - Displayed a spinner with the model name when generating commit messages.
-- Aider wrote 74% of the code in this release.
 
 ### Aider v0.83.0
 
@@ -411,7 +465,7 @@
 - [Aider works with LLM web chat UIs](https://aider.chat/docs/usage/copypaste.html).
   - New `--copy-paste` mode.
   - New `/copy-context` command.
-- [Set API keys and other environment variables for all providers from command line or yaml conf file](https://aider.chat/docs/config/aider_conf.html#storing-llm-keys).
+- [Set API keys and other environment variables for all providers from command line or YAML conf file](https://aider.chat/docs/config/aider_conf.html#storing-llm-keys).
   - New `--api-key provider=key` setting.
   - New `--set-env VAR=value` setting.
 - Added bash and zsh support to `--watch-files`.
@@ -579,7 +633,7 @@
 
 ### Aider v0.59.1
 
-- Check for obsolete `yes: true` in yaml config, show helpful error.
+- Check for obsolete `yes: true` in YAML config, show helpful error.
 - Model settings for openrouter/anthropic/claude-3.5-sonnet:beta
 
 ### Aider v0.59.0
@@ -589,7 +643,7 @@
   - Still auto-completes the full paths of the repo files like `/add`.
   - Now supports globs like `src/**/*.py`
 - Renamed `--yes` to `--yes-always`.
-  - Now uses `AIDER_YES_ALWAYS` env var and `yes-always:` yaml key.
+  - Now uses `AIDER_YES_ALWAYS` env var and `yes-always:` YAML key.
   - Existing YAML and .env files will need to be updated.
   - Can still abbreviate to `--yes` on the command line.
 - Config file now uses standard YAML list syntax with `  - list entries`, one per line.  
@@ -796,7 +850,7 @@
   - Use `--map-refresh <always|files|manual|auto>` to configure.
 - Improved cost estimate logic for caching.
 - Improved editing performance on Jupyter Notebook `.ipynb` files.
-- Show which config yaml file is loaded with `--verbose`.
+- Show which config YAML file is loaded with `--verbose`.
 - Bumped dependency versions.
 - Bugfix: properly load `.aider.models.metadata.json` data.
 - Bugfix: Using `--msg /ask ...` caused an exception.

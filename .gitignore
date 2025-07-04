@@ -16,4 +16,4 @@ venv/
 .#*
 .gitattributes
 tmp.benchmarks/
-# my_aider_chat.egg-info/
+.docker_bash_history
