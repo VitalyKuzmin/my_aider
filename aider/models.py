@@ -937,7 +937,7 @@ class Model(ModelSettings):
 
             os.environ[openai_api_key] = token
 
-    def send_completion(self, messages, functions, stream, temperature=None):
+    def send_completion(self, messages, functions, stream, temperature=None, **kwargs_extra):
         if os.environ.get("AIDER_SANITY_CHECK_TURNS"):
             sanity_check_messages(messages)
 
@@ -958,12 +958,15 @@ class Model(ModelSettings):
 
             kwargs["temperature"] = temperature
 
+        tools = kwargs_extra.get("tools")
+        tool_choice = kwargs_extra.get("tool_choice")
+
         # Handle both older 'functions' and newer 'tools'
         if tools:
             kwargs["tools"] = tools
             if tool_choice:
                 kwargs["tool_choice"] = tool_choice
-        elif functions is not None: # Fallback for older function calling
+        elif functions: # Fallback for older function calling
             function = functions[0]
             kwargs["tools"] = [dict(type="function", function=function)]
             kwargs["tool_choice"] = {"type": "function", "function": {"name": function["name"]}}

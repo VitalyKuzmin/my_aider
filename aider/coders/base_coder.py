@@ -1868,10 +1868,12 @@ class Coder:
             # This should ideally come from model.info metadata in the future
             is_openai_model_potentially_with_internal_search = "openai" in model.info.get("model_litellm_provider", "").lower()
 
-            if self.args.inner_web_search is False: # Явно указано --no-inner-web-search
+            inner_web_search_enabled = self.args.inner_web_search if self.args else None
+
+            if inner_web_search_enabled is False:  # Явно указано --no-inner-web-search
                 final_tools_to_pass = [self.web_search_tool]
                 final_tool_choice = "auto"
-            elif self.args.inner_web_search is True: # Явно указано --inner-web-search
+            elif inner_web_search_enabled is True:  # Явно указано --inner-web-search
                 if is_gemini_model:
                     final_tool_choice = "google_search_retrieval"
                     final_tools_to_pass = None
@@ -1881,7 +1883,7 @@ class Coder:
                 else:
                     final_tools_to_pass = None
                     final_tool_choice = None
-            else:  # self.args.inner_web_search is None (не указано - поведение по умолчанию)
+            else:  # inner_web_search_enabled is None (не указано - поведение по умолчанию)
                 if is_gemini_model:
                     final_tool_choice = "google_search_retrieval"
                     final_tools_to_pass = None
@@ -1891,10 +1893,11 @@ class Coder:
 
             hash_object, completion = model.send_completion(
                 messages,
+                functions,
+                self.stream,
+                temperature=self.temperature,
                 tools=final_tools_to_pass,
                 tool_choice=final_tool_choice,
-                stream=self.stream,
-                temperature=self.temperature,
             )
             self.chat_completion_call_hashes.append(hash_object.hexdigest())
 
@@ -1922,10 +1925,11 @@ class Coder:
                          self.io.log_llm_history("TO LLM (after stream tools)", format_messages(messages))
                          hash_object, completion = model.send_completion(
                              messages,
+                             functions,
+                             self.stream,
+                             temperature=self.temperature,
                              tools=final_tools_to_pass, # Use determined tools
                              tool_choice=final_tool_choice, # Use determined tool_choice
-                             stream=self.stream,
-                             temperature=self.temperature,
                          )
                          self.chat_completion_call_hashes.append(hash_object.hexdigest())
                          # Show the final response after tool execution
@@ -1949,10 +1953,11 @@ class Coder:
                      self.io.log_llm_history("TO LLM (after non-stream tools)", format_messages(messages))
                      hash_object, completion = model.send_completion(
                          messages,
+                         functions,
+                         self.stream,
+                         temperature=self.temperature,
                          tools=final_tools_to_pass, # Use determined tools
                          tool_choice=final_tool_choice, # Use determined tool_choice
-                         stream=self.stream,
-                         temperature=self.temperature,
                      )
                      self.chat_completion_call_hashes.append(hash_object.hexdigest())
                      # Show final response
