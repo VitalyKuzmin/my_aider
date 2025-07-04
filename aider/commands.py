@@ -1905,6 +1905,46 @@ class Commands:
         "Alias for /editor: Open an editor to write a prompt"
         return self.cmd_editor(args)
 
+    def cmd_no_think(self, args):
+        "Disable thinking tokens for faster, but less capable, responses."
+        model = self.coder.main_model
+        model.set_thinking_tokens("0")
+        self.io.tool_output("Thinking tokens disabled.")
+        self.io.tool_output()
+
+        # Output announcements
+        announcements = "\n".join(self.coder.get_announcements())
+        self.io.tool_output(announcements)
+
+    def cmd_think(self, args):
+        "Enable or set thinking tokens. Restores original value if no arg is given."
+        model = self.coder.main_model
+        value = args.strip()
+
+        if not value:
+            original_value = self.coder.original_thinking_tokens
+            if original_value is None:
+                self.io.tool_output("No original thinking token value was set to restore.")
+                return
+            value = str(original_value)
+
+        model.set_thinking_tokens(value)
+
+        if value == "0":
+            self.io.tool_output("Thinking tokens disabled.")
+        else:
+            formatted_budget = model.get_thinking_tokens()
+            budget = model.get_raw_thinking_tokens()
+            self.io.tool_output(
+                f"Set thinking token budget to {budget:,} tokens ({formatted_budget})."
+            )
+
+        self.io.tool_output()
+
+        # Output announcements
+        announcements = "\n".join(self.coder.get_announcements())
+        self.io.tool_output(announcements)
+
     def cmd_think_tokens(self, args):
         """Set the thinking token budget, eg: 8096, 8k, 10.5k, 0.5M, or 0 to disable."""
         model = self.coder.main_model
