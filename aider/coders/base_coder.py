@@ -943,6 +943,7 @@ class Coder:
         self.test_outcome = None
         self.shell_commands = []
         self.message_cost = 0
+        self.message_duration = 0
 
         if self.repo:
             self.commit_before_message.append(self.repo.get_head_commit_sha())
@@ -1527,6 +1528,7 @@ class Coder:
         self.usage_report = None
         exhausted = False
         interrupted = False
+        start_time = time.time()
         try:
             while True:
                 try:
@@ -1585,6 +1587,7 @@ class Coder:
                     self.event("message_send_exception", exception=str(err))
                     return
         finally:
+            self.message_duration = time.time() - start_time
             if self.mdstream:
                 self.live_incremental_response(True)
                 self.mdstream = None
@@ -2432,7 +2435,16 @@ class Coder:
         self.total_tokens_sent += self.message_tokens_sent
         self.total_tokens_received += self.message_tokens_received
 
-        self.io.tool_output(self.usage_report)
+        report = self.usage_report
+        if self.message_duration > 0:
+            time_report = f" Time: {self.message_duration:.1f}s."
+            parts = report.split(" Cost:")
+            if len(parts) == 2:
+                report = parts[0].strip() + time_report + " Cost:" + parts[1]
+            else:
+                report = report.strip() + time_report
+
+        self.io.tool_output(report)
 
         prompt_tokens = self.message_tokens_sent
         completion_tokens = self.message_tokens_received
